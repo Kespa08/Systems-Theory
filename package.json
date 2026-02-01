@@ -1,0 +1,12 @@
+{
+  "name": "light-visualizer",
+  "version": "0.1.0",
+  "description": "Incremental Graph Explorer – VEC prototype",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
