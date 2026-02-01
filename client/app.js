@@ -1,14 +1,54 @@
 // app.js — Front-end logic for the Light Visualizer prototype.
-// Fetches the graph from the API, renders it as SVG, handles click interaction.
+// Renders an embedded graph as SVG, handles click interaction.
 // Uses a simple force-directed layout (no external libraries).
+// Works standalone (file://) or served via Express.
 
-(async function () {
+(function () {
   const svg = document.getElementById("graph");
   const sidebar = document.getElementById("sidebar");
 
-  // --- Fetch graph data ---
-  const res = await fetch("/api/graph");
-  const graph = await res.json();
+  // --- Embedded graph data (same as server/data.js) ---
+  // This lets the app work when opened directly as a file.
+  const graph = {
+    nodes: [
+      { id: "b1", type: "Branch", label: "Event Strategy & Delivery", properties: { description: "Oversees end-to-end event planning and execution" } },
+      { id: "t1", type: "Team", label: "Design & Production", properties: { description: "Handles visual design and physical production of materials" } },
+      { id: "t2", type: "Team", label: "Logistics & Compliance", properties: { description: "Manages event logistics and regulatory compliance" } },
+      { id: "t3", type: "Team", label: "Stakeholder Engagement", properties: { description: "Coordinates communication with internal and external stakeholders" } },
+      { id: "r1", type: "Role", label: "Assistant Designer", properties: { description: "Supports design output under the lead designer" } },
+      { id: "r2", type: "Role", label: "Production Manager", properties: { description: "Oversees production timelines and quality" } },
+      { id: "r3", type: "Role", label: "Compliance Officer", properties: { description: "Ensures all outputs meet regulatory requirements" } },
+      { id: "r4", type: "Role", label: "Logistics Coordinator", properties: { description: "Plans and executes event logistics" } },
+      { id: "r5", type: "Role", label: "Engagement Lead", properties: { description: "Drives stakeholder communication strategy" } },
+      { id: "r6", type: "Role", label: "Communications Officer", properties: { description: "Handles public-facing messaging and media" } },
+      { id: "a1", type: "Artefact", label: "Ballot Paper", properties: { description: "Official voting document produced for elections" } },
+      { id: "a2", type: "Artefact", label: "Event Run Sheet", properties: { description: "Step-by-step schedule for event execution" } },
+      { id: "a3", type: "Artefact", label: "Compliance Report", properties: { description: "Document certifying regulatory adherence" } },
+      { id: "a4", type: "Artefact", label: "Stakeholder Brief", properties: { description: "Summary document for stakeholder communication" } },
+      { id: "c1", type: "Constraint", label: "Electoral Act", properties: { description: "Primary legislation governing electoral processes" } },
+      { id: "c2", type: "Constraint", label: "Privacy Regulation", properties: { description: "Data handling and privacy requirements" } },
+    ],
+    relationships: [
+      { source: "b1", target: "t1", type: "HAS_TEAM" },
+      { source: "b1", target: "t2", type: "HAS_TEAM" },
+      { source: "b1", target: "t3", type: "HAS_TEAM" },
+      { source: "t1", target: "r1", type: "HAS_ROLE" },
+      { source: "t1", target: "r2", type: "HAS_ROLE" },
+      { source: "t2", target: "r3", type: "HAS_ROLE" },
+      { source: "t2", target: "r4", type: "HAS_ROLE" },
+      { source: "t3", target: "r5", type: "HAS_ROLE" },
+      { source: "t3", target: "r6", type: "HAS_ROLE" },
+      { source: "t1", target: "a1", type: "PRODUCES" },
+      { source: "t2", target: "a2", type: "PRODUCES" },
+      { source: "t2", target: "a3", type: "PRODUCES" },
+      { source: "t3", target: "a4", type: "PRODUCES" },
+      { source: "a1", target: "c1", type: "GOVERNED_BY" },
+      { source: "a3", target: "c1", type: "GOVERNED_BY" },
+      { source: "r3", target: "c1", type: "GOVERNED_BY" },
+      { source: "a4", target: "c2", type: "GOVERNED_BY" },
+      { source: "r6", target: "c2", type: "GOVERNED_BY" },
+    ],
+  };
 
   // --- Layout: simple force simulation ---
   // Assign initial random positions and zero velocity to each node.
@@ -133,34 +173,33 @@
   });
 
   // --- Click handler: select node and populate sidebar ---
-  async function selectNode(node, circle) {
+  // Uses the embedded data directly — no API call needed.
+  function selectNode(node, circle) {
     // Deselect previous
     if (selectedCircle) selectedCircle.classList.remove("selected");
     selectedCircle = circle;
     circle.classList.add("selected");
 
-    // Fetch node detail from API
-    const res = await fetch(`/api/node/${node.id}`);
-    const data = await res.json();
+    // Find relationships involving this node
+    const rels = graph.relationships.filter(
+      (r) => r.source === node.id || r.target === node.id
+    );
 
     // Build sidebar HTML
-    let html = `<h2>${data.node.label}</h2>`;
-    html += `<div class="node-type">${data.node.type}</div>`;
+    let html = `<h2>${node.label}</h2>`;
+    html += `<div class="node-type">${node.type}</div>`;
 
-    if (data.node.properties && data.node.properties.description) {
+    if (node.properties && node.properties.description) {
       html += `<div class="section-label">Description</div>`;
-      html += `<div class="description">${data.node.properties.description}</div>`;
+      html += `<div class="description">${node.properties.description}</div>`;
     }
 
-    if (data.relationships.length > 0) {
+    if (rels.length > 0) {
       html += `<div class="section-label">Connections</div><ul>`;
-      data.relationships.forEach((r) => {
-        // Determine the "other" node
+      rels.forEach((r) => {
         const otherId = r.source === node.id ? r.target : r.source;
-        const other = data.connectedNodes.find((n) => n.id === otherId);
+        const other = nodeMap[otherId];
         if (!other) return;
-
-        // Show direction
         const arrow = r.source === node.id ? "→" : "←";
         html += `<li><span class="rel-type">${r.type}</span> ${arrow} ${other.label}</li>`;
       });
