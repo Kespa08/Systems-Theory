@@ -9,9 +9,41 @@
 <body>
   <div id="app">
     <svg id="graph"></svg>
+    <div id="overview">
+      <button id="overview-toggle" class="buttons">Overview</button>
+      <div id="overview-list"></div>
+    </div>
     <aside id="sidebar">
       <p class="placeholder">Click a node to view details</p>
     </aside>
+    <button id="add-node-btn" class="buttons">Add Node</button>
+    <div id="add-node-form">
+      <button id="close-form-btn" class="buttons" type="button">x</button>
+      <div class="form-field">
+        <label class="form-label" for="node-type">Type</label>
+        <select id="node-type" class="form-input">
+          <option value="Branch">Branch</option>
+          <option value="Sub-Branch">Sub-Branch</option>
+          <option value="Team">Team</option>
+          <option value="Role">Role</option>
+          <option value="Artefact">Artefact</option>
+          <option value="Constraint">Constraint</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="node-label">Label</label>
+        <input id="node-label" class="form-input" type="text" placeholder="Node name" />
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="node-desc">Description</label>
+        <input id="node-desc" class="form-input" type="text" placeholder="Short description" />
+      </div>
+      <div class="form-field">
+        <label class="form-label">Relationships <button id="add-rel-btn" class="buttons" type="button">+</button></label>
+        <div id="relationships-list"></div>
+      </div>
+      <button id="create-node-btn" class="buttons">Create</button>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>

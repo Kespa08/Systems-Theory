@@ -12,41 +12,17 @@
   const graph = {
     nodes: [
       { id: "b1", type: "Branch", label: "Event Strategy & Delivery", properties: { description: "Oversees end-to-end event planning and execution" } },
+      { id: "b2", type: "Sub-Branch", label: "Program Delivery", properties: { description: "Focuses on the creative and aesthetic aspects of events" } },
       { id: "t1", type: "Team", label: "Design & Production", properties: { description: "Handles visual design and physical production of materials" } },
-      { id: "t2", type: "Team", label: "Logistics & Compliance", properties: { description: "Manages event logistics and regulatory compliance" } },
-      { id: "t3", type: "Team", label: "Stakeholder Engagement", properties: { description: "Coordinates communication with internal and external stakeholders" } },
       { id: "r1", type: "Role", label: "Assistant Designer", properties: { description: "Supports design output under the lead designer" } },
-      { id: "r2", type: "Role", label: "Production Manager", properties: { description: "Oversees production timelines and quality" } },
-      { id: "r3", type: "Role", label: "Compliance Officer", properties: { description: "Ensures all outputs meet regulatory requirements" } },
-      { id: "r4", type: "Role", label: "Logistics Coordinator", properties: { description: "Plans and executes event logistics" } },
-      { id: "r5", type: "Role", label: "Engagement Lead", properties: { description: "Drives stakeholder communication strategy" } },
-      { id: "r6", type: "Role", label: "Communications Officer", properties: { description: "Handles public-facing messaging and media" } },
       { id: "a1", type: "Artefact", label: "Ballot Paper", properties: { description: "Official voting document produced for elections" } },
-      { id: "a2", type: "Artefact", label: "Event Run Sheet", properties: { description: "Step-by-step schedule for event execution" } },
-      { id: "a3", type: "Artefact", label: "Compliance Report", properties: { description: "Document certifying regulatory adherence" } },
-      { id: "a4", type: "Artefact", label: "Stakeholder Brief", properties: { description: "Summary document for stakeholder communication" } },
       { id: "c1", type: "Constraint", label: "Electoral Act", properties: { description: "Primary legislation governing electoral processes" } },
-      { id: "c2", type: "Constraint", label: "Privacy Regulation", properties: { description: "Data handling and privacy requirements" } },
     ],
     relationships: [
       { source: "b1", target: "t1", type: "HAS_TEAM" },
-      { source: "b1", target: "t2", type: "HAS_TEAM" },
-      { source: "b1", target: "t3", type: "HAS_TEAM" },
       { source: "t1", target: "r1", type: "HAS_ROLE" },
-      { source: "t1", target: "r2", type: "HAS_ROLE" },
-      { source: "t2", target: "r3", type: "HAS_ROLE" },
-      { source: "t2", target: "r4", type: "HAS_ROLE" },
-      { source: "t3", target: "r5", type: "HAS_ROLE" },
-      { source: "t3", target: "r6", type: "HAS_ROLE" },
       { source: "t1", target: "a1", type: "PRODUCES" },
-      { source: "t2", target: "a2", type: "PRODUCES" },
-      { source: "t2", target: "a3", type: "PRODUCES" },
-      { source: "t3", target: "a4", type: "PRODUCES" },
       { source: "a1", target: "c1", type: "GOVERNED_BY" },
-      { source: "a3", target: "c1", type: "GOVERNED_BY" },
-      { source: "r3", target: "c1", type: "GOVERNED_BY" },
-      { source: "a4", target: "c2", type: "GOVERNED_BY" },
-      { source: "r6", target: "c2", type: "GOVERNED_BY" },
     ],
   };
 
@@ -64,11 +40,8 @@
     nodeMap[n.id] = n;
   });
 
-  // Radius by type
-  const radius = (type) => {
-    const sizes = { Branch: 22, Team: 16, Role: 10, Artefact: 12, Constraint: 14 };
-    return sizes[type] || 10;
-  };
+  // Uniform radius for all node types
+  const radius = () => 6;
 
   // Run a basic force simulation for a fixed number of iterations.
   // Forces: repulsion between all nodes, attraction along edges, centering.
@@ -122,7 +95,7 @@
         n.x += n.vx;
         n.y += n.vy;
         // Keep within bounds
-        const r = radius(n.type);
+        const r = radius();
         n.x = Math.max(r, Math.min(width() - r, n.x));
         n.y = Math.max(r, Math.min(height() - r, n.y));
       });
@@ -133,6 +106,13 @@
 
   // --- Render SVG ---
   const NS = "http://www.w3.org/2000/svg";
+
+  // Map from node id → connected edge elements (with role: source or target)
+  const edgesByNode = {};
+  graph.nodes.forEach((n) => { edgesByNode[n.id] = []; });
+
+  // Map from node id → its SVG circle and label elements
+  const elemsByNode = {};
 
   // Draw edges first (so they sit behind nodes)
   graph.relationships.forEach((r) => {
@@ -146,13 +126,16 @@
     line.setAttribute("y2", t.y);
     line.setAttribute("class", "edge");
     svg.appendChild(line);
+    edgesByNode[r.source].push({ line, role: "source" });
+    edgesByNode[r.target].push({ line, role: "target" });
   });
 
   // Draw nodes
+  let selectedNode = null;
   let selectedCircle = null;
 
   graph.nodes.forEach((n) => {
-    const r = radius(n.type);
+    const r = radius();
 
     // Circle
     const circle = document.createElementNS(NS, "circle");
@@ -160,25 +143,194 @@
     circle.setAttribute("cy", n.y);
     circle.setAttribute("r", r);
     circle.setAttribute("class", `node-circle node-${n.type}`);
-    circle.addEventListener("click", () => selectNode(n, circle));
+
+    // Hover: highlight connected edges (only when not selected)
+    circle.addEventListener("mouseenter", () => {
+      if (selectedNode !== n) {
+        edgesByNode[n.id].forEach((e) => e.line.classList.add("highlighted"));
+      }
+    });
+    circle.addEventListener("mouseleave", () => {
+      if (selectedNode !== n) {
+        edgesByNode[n.id].forEach((e) => e.line.classList.remove("highlighted"));
+      }
+    });
+
     svg.appendChild(circle);
 
-    // Label
+    // Label background + text
+    const labelBg = document.createElementNS(NS, "rect");
+    labelBg.setAttribute("class", "node-label-bg");
+    svg.appendChild(labelBg);
+
     const text = document.createElementNS(NS, "text");
     text.setAttribute("x", n.x);
-    text.setAttribute("y", n.y + r + 14);
+    text.setAttribute("y", n.y + r + 17);
     text.setAttribute("class", "node-label");
     text.textContent = n.label;
     svg.appendChild(text);
+
+    // Size the background rect to fit the text
+    requestAnimationFrame(() => {
+      const bbox = text.getBBox();
+      labelBg.setAttribute("x", bbox.x - 3);
+      labelBg.setAttribute("y", bbox.y - 3);
+      labelBg.setAttribute("width", bbox.width + 9);
+      labelBg.setAttribute("height", bbox.height + 6);
+    });
+
+    elemsByNode[n.id] = { circle, text, labelBg };
+
+    // --- Drag behaviour ---
+    let dragging = false;
+    let dragMoved = false;
+
+    circle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      dragging = true;
+      dragMoved = false;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      dragMoved = true;
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+      n.x = svgPt.x;
+      n.y = svgPt.y;
+      updateNodePosition(n);
+      repelNearbyNodes(n);
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (dragging && !dragMoved) {
+        selectNode(n, circle);
+      }
+      dragging = false;
+    });
   });
 
-  // --- Click handler: select node and populate sidebar ---
-  // Uses the embedded data directly — no API call needed.
-  function selectNode(node, circle) {
-    // Deselect previous
+  // --- Drag repulsion ---
+  const REPULSE_RADIUS = 36;
+
+  function repelNearbyNodes(draggedNode) {
+    graph.nodes.forEach((other) => {
+      if (other === draggedNode) return;
+      let dx = other.x - draggedNode.x;
+      let dy = other.y - draggedNode.y;
+      let dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+      if (dist < REPULSE_RADIUS) {
+        let push = (REPULSE_RADIUS - dist) / REPULSE_RADIUS;
+        let nx = dx / dist;
+        let ny = dy / dist;
+        other.vx += nx * push * REPULSE_RADIUS;
+        other.vy += ny * push * REPULSE_RADIUS;
+      }
+    });
+  }
+
+  // --- Momentum animation loop ---
+  const FRICTION = 0.92;
+  const MIN_VELOCITY = 0.1;
+
+  function animateNodes() {
+    graph.nodes.forEach((node) => {
+      if (Math.abs(node.vx) < MIN_VELOCITY && Math.abs(node.vy) < MIN_VELOCITY) return;
+      node.vx *= FRICTION;
+      node.vy *= FRICTION;
+      node.x += node.vx;
+      node.y += node.vy;
+      // Keep within bounds
+      const r = radius();
+      node.x = Math.max(r, Math.min(width() - r, node.x));
+      node.y = Math.max(r, Math.min(height() - r, node.y));
+      updateNodePosition(node);
+    });
+    requestAnimationFrame(animateNodes);
+  }
+  requestAnimationFrame(animateNodes);
+
+  // Update a node's circle, label, and connected edges
+  function updateNodePosition(node) {
+    const r = radius();
+    const elems = elemsByNode[node.id];
+    elems.circle.setAttribute("cx", node.x);
+    elems.circle.setAttribute("cy", node.y);
+    elems.text.setAttribute("x", node.x);
+    elems.text.setAttribute("y", node.y + r + 17);
+
+    // Update label background position
+    const bbox = elems.text.getBBox();
+    elems.labelBg.setAttribute("x", bbox.x - 3);
+    elems.labelBg.setAttribute("y", bbox.y - 3);
+    elems.labelBg.setAttribute("width", bbox.width + 9);
+    elems.labelBg.setAttribute("height", bbox.height + 6);
+
+    edgesByNode[node.id].forEach((e) => {
+      if (e.role === "source") {
+        e.line.setAttribute("x1", node.x);
+        e.line.setAttribute("y1", node.y);
+      } else {
+        e.line.setAttribute("x2", node.x);
+        e.line.setAttribute("y2", node.y);
+      }
+    });
+  }
+
+  // Clear all selection state
+  function deselectNode() {
+    if (selectedNode) {
+      edgesByNode[selectedNode.id].forEach((e) => e.line.classList.remove("highlighted"));
+      elemsByNode[selectedNode.id].text.classList.remove("selected");
+      // Remove related class from connected nodes
+      graph.relationships.forEach((r) => {
+        if (r.source === selectedNode.id || r.target === selectedNode.id) {
+          const otherId = r.source === selectedNode.id ? r.target : r.source;
+          if (elemsByNode[otherId]) elemsByNode[otherId].circle.classList.remove("related");
+        }
+      });
+      // Remove active from overview entry
+      const prev = document.querySelector('.overview-entry.active');
+      if (prev) prev.classList.remove("active");
+    }
     if (selectedCircle) selectedCircle.classList.remove("selected");
+    selectedNode = null;
+    selectedCircle = null;
+    sidebar.innerHTML = '<p class="placeholder">Click a node to view details</p>';
+  }
+
+  // --- Click handler: select node and populate sidebar ---
+  function selectNode(node, circle) {
+    // If clicking the already-selected node, deselect
+    if (selectedNode === node) {
+      deselectNode();
+      return;
+    }
+
+    // Clear previous selection
+    deselectNode();
+
+    selectedNode = node;
     selectedCircle = circle;
     circle.classList.add("selected");
+    elemsByNode[node.id].text.classList.add("selected");
+
+    // Persistently highlight connected edges and related nodes
+    edgesByNode[node.id].forEach((e) => e.line.classList.add("highlighted"));
+    graph.relationships.forEach((r) => {
+      if (r.source === node.id || r.target === node.id) {
+        const otherId = r.source === node.id ? r.target : r.source;
+        if (elemsByNode[otherId]) elemsByNode[otherId].circle.classList.add("related");
+      }
+    });
+
+    // Highlight matching overview entry
+    const entries = document.querySelectorAll('.overview-entry');
+    entries.forEach((entry) => {
+      entry.classList.toggle("active", entry.dataset.nodeId === node.id);
+    });
 
     // Find relationships involving this node
     const rels = graph.relationships.filter(
@@ -208,4 +360,119 @@
 
     sidebar.innerHTML = html;
   }
+
+  // --- Overview panel ---
+  const overviewEl = document.getElementById("overview");
+  const overviewToggle = document.getElementById("overview-toggle");
+  const overviewList = document.getElementById("overview-list");
+
+  // Populate list
+  let listHTML = "";
+  graph.nodes.forEach((n) => {
+    const desc = (n.properties && n.properties.description) || "";
+    listHTML += `<div class="overview-entry" data-node-id="${n.id}">`;
+    listHTML += `<div class="overview-entry__label">${n.label}</div>`;
+    listHTML += `<div class="overview-entry__type">${n.type}</div>`;
+    if (desc) listHTML += `<div class="overview-entry__desc">${desc}</div>`;
+    listHTML += `</div>`;
+  });
+  overviewList.innerHTML = listHTML;
+
+  // Toggle open/close
+  overviewToggle.addEventListener("click", () => {
+    overviewEl.classList.toggle("open");
+  });
+
+  // Click an entry to select that node on the graph
+  overviewList.addEventListener("click", (e) => {
+    const entry = e.target.closest(".overview-entry");
+    if (!entry) return;
+    const id = entry.dataset.nodeId;
+    const node = nodeMap[id];
+    const elems = elemsByNode[id];
+    if (node && elems) selectNode(node, elems.circle);
+  });
+
+  // --- Add Node form ---
+  const addNodeBtn = document.getElementById("add-node-btn");
+  const addNodeForm = document.getElementById("add-node-form");
+  const addRelBtn = document.getElementById("add-rel-btn");
+  const relList = document.getElementById("relationships-list");
+  const createNodeBtn = document.getElementById("create-node-btn");
+
+  const relTypes = ["HAS_TEAM", "HAS_ROLE", "PRODUCES", "GOVERNED_BY"];
+
+  // Build target node options HTML
+  function nodeOptionsHTML() {
+    return graph.nodes.map((n) =>
+      `<option value="${n.id}">${n.label} (${n.type})</option>`
+    ).join("");
+  }
+
+  // Add a relationship row
+  function addRelRow() {
+    const row = document.createElement("div");
+    row.className = "relationship-row";
+    row.innerHTML =
+      `<div class="rel-row-header"><button type="button" class="buttons rel-remove-btn">x</button></div>` +
+      `<select class="rel-type-select">` +
+      relTypes.map((t) => `<option value="${t}">${t}</option>`).join("") +
+      `</select>` +
+      `<select class="rel-target-select">${nodeOptionsHTML()}</select>`;
+    row.querySelector(".rel-remove-btn").addEventListener("click", () => row.remove());
+    relList.appendChild(row);
+  }
+
+  // Toggle form
+  addNodeBtn.addEventListener("click", () => {
+    addNodeForm.classList.toggle("open");
+    addNodeBtn.style.display = addNodeForm.classList.contains("open") ? "none" : "";
+  });
+
+  // Close form
+  document.getElementById("close-form-btn").addEventListener("click", () => {
+    addNodeForm.classList.remove("open");
+    addNodeBtn.style.display = "";
+  });
+
+  // Add relationship row
+  addRelBtn.addEventListener("click", () => addRelRow());
+
+  // Create: build prompt and display in sidebar
+  createNodeBtn.addEventListener("click", () => {
+    const type = document.getElementById("node-type").value;
+    const label = document.getElementById("node-label").value.trim();
+    const desc = document.getElementById("node-desc").value.trim();
+
+    if (!label) return;
+
+    // Gather relationships
+    const rows = relList.querySelectorAll(".relationship-row");
+    const rels = [];
+    rows.forEach((row) => {
+      const relType = row.querySelector(".rel-type-select").value;
+      const targetId = row.querySelector(".rel-target-select").value;
+      const targetNode = nodeMap[targetId];
+      rels.push({ relType, targetId, targetLabel: targetNode ? targetNode.label : targetId });
+    });
+
+    // Build prompt
+    let prompt = `Add the following node to data.js and app.js:\n\n`;
+    prompt += `Node: { type: "${type}", label: "${label}"`;
+    if (desc) prompt += `, properties: { description: "${desc}" }`;
+    prompt += ` }\n`;
+
+    if (rels.length > 0) {
+      prompt += `\nRelationships:\n`;
+      rels.forEach((r) => {
+        prompt += `- ${r.relType} → ${r.targetLabel} (${r.targetId})\n`;
+      });
+    }
+
+    sidebar.innerHTML = `<div class="section-label">Prompt — copy and paste</div><div class="prompt-output">${prompt}</div>`;
+
+    // Close form
+    addNodeForm.classList.remove("open");
+    addNodeBtn.style.display = "";
+  });
 })();
